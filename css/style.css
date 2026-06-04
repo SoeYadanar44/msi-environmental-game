@@ -1008,3 +1008,38 @@ body {
         transition: opacity 0.05s ease, transform 0.05s ease;
     }
 }
+/* Selected card highlight for mobile tap mode */
+.picker-card.card-selected {
+    outline: 3px solid var(--msi-blue-light);
+    outline-offset: 4px;
+    transform: scale(1.02);
+    transition: all 0.2s ease;
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.3);
+    border-radius: var(--radius);
+}
+
+/* Mobile instructions */
+@media (hover: none) and (pointer: coarse) {
+    .game-tagline {
+        font-size: 0.75rem;
+        padding: 0.35rem 1rem;
+    }
+    
+    .picker-card {
+        cursor: pointer;
+        transition: transform 0.1s ease;
+    }
+    
+    .picker-card:active {
+        transform: scale(0.98);
+    }
+    
+    .drop-zone {
+        cursor: pointer;
+        transition: all 0.1s ease;
+    }
+    
+    .drop-zone:active {
+        transform: scale(0.98);
+    }
+}

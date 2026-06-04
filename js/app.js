@@ -12,14 +12,14 @@
     let levelLocked = false;
     let draggedItem = null;
     
-    // Touch drag variables
-    let touchDraggedItem = null;
-    let touchStartElement = null;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchTargetZone = null;
-    let isDraggingCard = false;
-    let dragStartTime = 0;
+    // For mobile tap-to-select mode
+    let selectedCard = null;
+    let selectedCardType = null;
+    let selectedCardItem = null;
+    let selectedCardIndex = null;
+    
+    // Detect if device is mobile/touch
+    const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     
     // Store the current level data
     let currentLevelData = null;
@@ -123,7 +123,11 @@
             <p class="picker-card__caption">${escapeHtml(item.text)}</p>
         `;
 
-        setupDraggable(card, type, item, index);
+        if (isMobile) {
+            setupMobileTap(card, type, item, index);
+        } else {
+            setupDraggable(card, type, item, index);
+        }
         return card;
     }
 
@@ -282,6 +286,7 @@
         const level = getLevel();
         
         levelLocked = false;
+        selectedCard = null;
         resetDropZones();
         updateProblemView(animate);
         renderCardScroll(els.causeScroll, level.causes, "cause");
@@ -325,11 +330,10 @@
     }
 
     // ============================================
-    // IMPROVED TOUCH HANDLING - ALLOWS SCROLLING
+    // DESKTOP: DRAG & DROP
     // ============================================
     
     function setupDraggable(card, type, item, index) {
-        // Desktop drag events
         card.setAttribute("draggable", "true");
         
         card.addEventListener("dragstart", (e) => {
@@ -351,202 +355,110 @@
             card.classList.remove("is-dragging");
             draggedItem = null;
         });
-        
-        // ============================================
-        // TOUCH EVENTS - DETECT DRAG VS SCROLL
-        // ============================================
-        
-        let touchTimeout = null;
-        
-        card.addEventListener("touchstart", (e) => {
-            if (levelLocked) return;
-            if (card.classList.contains("is-locked")) return;
+    }
+
+    // ============================================
+    // MOBILE: TAP-TO-SELECT + TAP-TO-DROP
+    // ============================================
+    
+    function setupMobileTap(card, type, item, index) {
+        card.addEventListener("click", (e) => {
+            e.stopPropagation();
             
-            const touch = e.touches[0];
-            touchStartX = touch.clientX;
-            touchStartY = touch.clientY;
-            touchStartElement = card;
-            touchDraggedItem = { type, item, index };
-            dragStartTime = Date.now();
-            isDraggingCard = false;
-            
-            // Small delay to determine if user wants to drag or scroll
-            touchTimeout = setTimeout(() => {
-                // User held long enough - start drag mode
-                if (touchStartElement && !isDraggingCard) {
-                    isDraggingCard = true;
-                    touchStartElement.classList.add("is-dragging");
-                    
-                    // Create ghost for visual feedback
-                    const ghost = touchStartElement.cloneNode(true);
-                    ghost.style.position = "fixed";
-                    ghost.style.top = "-9999px";
-                    ghost.style.left = "-9999px";
-                    ghost.style.width = touchStartElement.offsetWidth + "px";
-                    ghost.style.opacity = "0.5";
-                    ghost.style.pointerEvents = "none";
-                    ghost.style.zIndex = "9999";
-                    ghost.id = "drag-ghost";
-                    document.body.appendChild(ghost);
-                }
-            }, 100);
-        });
-        
-        card.addEventListener("touchmove", (e) => {
-            if (!touchDraggedItem) return;
-            
-            const touch = e.touches[0];
-            const deltaX = Math.abs(touch.clientX - touchStartX);
-            const deltaY = Math.abs(touch.clientY - touchStartY);
-            
-            // If user moves more than 10px, consider it a drag attempt
-            if (!isDraggingCard && (deltaX > 10 || deltaY > 10)) {
-                // Clear the timeout since we're now dragging
-                if (touchTimeout) {
-                    clearTimeout(touchTimeout);
-                    touchTimeout = null;
-                }
-                isDraggingCard = true;
-                if (touchStartElement) {
-                    touchStartElement.classList.add("is-dragging");
-                    
-                    // Create ghost
-                    const ghost = touchStartElement.cloneNode(true);
-                    ghost.style.position = "fixed";
-                    ghost.style.top = "-9999px";
-                    ghost.style.left = "-9999px";
-                    ghost.style.width = touchStartElement.offsetWidth + "px";
-                    ghost.style.opacity = "0.5";
-                    ghost.style.pointerEvents = "none";
-                    ghost.style.zIndex = "9999";
-                    ghost.id = "drag-ghost";
-                    document.body.appendChild(ghost);
-                }
-            }
-            
-            if (isDraggingCard) {
-                e.preventDefault();
-                
-                const ghost = document.getElementById("drag-ghost");
-                if (ghost) {
-                    ghost.style.top = (touch.clientY - 50) + "px";
-                    ghost.style.left = (touch.clientX - 50) + "px";
-                }
-                
-                // Find which drop zone the finger is over
-                const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
-                let targetZone = null;
-                
-                for (let el of elemUnderTouch) {
-                    if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
-                        targetZone = el;
-                        break;
-                    }
-                }
-                
-                // Remove highlight from previous zone
-                if (touchTargetZone && touchTargetZone !== targetZone) {
-                    touchTargetZone.classList.remove("drop-zone--over");
-                }
-                
-                // Add highlight to new zone
-                if (targetZone && targetZone.dataset.accept === touchDraggedItem.type) {
-                    touchTargetZone = targetZone;
-                    touchTargetZone.classList.add("drop-zone--over");
-                } else {
-                    if (touchTargetZone) {
-                        touchTargetZone.classList.remove("drop-zone--over");
-                        touchTargetZone = null;
-                    }
-                }
-            }
-            // If not dragging, let the browser handle scrolling normally
-        }, { passive: false });
-        
-        card.addEventListener("touchend", (e) => {
-            // Clear the timeout if it's still pending
-            if (touchTimeout) {
-                clearTimeout(touchTimeout);
-                touchTimeout = null;
-            }
-            
-            const ghost = document.getElementById("drag-ghost");
-            if (ghost) ghost.remove();
-            
-            if (!touchDraggedItem) {
-                if (touchStartElement) {
-                    touchStartElement.classList.remove("is-dragging");
-                }
-                touchDraggedItem = null;
-                touchStartElement = null;
-                isDraggingCard = false;
+            if (levelLocked) {
+                showFeedback("Level complete! Click continue to next challenge.", "info");
                 return;
             }
             
-            if (isDraggingCard) {
-                e.preventDefault();
-                
-                // Get the final position
-                const touch = e.changedTouches[0];
-                const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
-                let dropZone = null;
-                
-                for (let el of elemUnderTouch) {
-                    if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
-                        dropZone = el;
-                        break;
-                    }
-                }
-                
-                // Remove highlight
-                if (touchTargetZone) {
-                    touchTargetZone.classList.remove("drop-zone--over");
-                    touchTargetZone = null;
-                }
-                
-                // Check if drop is valid
-                if (dropZone && dropZone.dataset.accept === touchDraggedItem.type && !levelLocked) {
-                    handleDrop(touchDraggedItem.type, touchDraggedItem.item, touchDraggedItem.index);
-                } else if (touchDraggedItem) {
-                    showFeedback(`Drop ${touchDraggedItem.type} cards on the ${touchDraggedItem.type} slot.`, "error");
-                }
+            if (card.classList.contains("is-locked")) {
+                showFeedback("This card has already been used!", "info");
+                return;
             }
             
-            // Clean up
-            if (touchStartElement) {
-                touchStartElement.classList.remove("is-dragging");
+            // If no card is selected, select this one
+            if (selectedCard === null) {
+                // Clear any previous selection highlight
+                clearSelectedHighlight();
+                
+                selectedCard = card;
+                selectedCardType = type;
+                selectedCardItem = item;
+                selectedCardIndex = index;
+                
+                card.classList.add("card-selected");
+                showFeedback(`Selected: ${item.text}. Now tap the matching ${type} slot.`, "info");
+            } 
+            // If a card is selected, this is a drop attempt
+            else {
+                // Check if the selected card matches this drop zone's type
+                if (selectedCardType === type) {
+                    // This is a drop on the correct type zone
+                    handleDrop(selectedCardType, selectedCardItem, selectedCardIndex);
+                    clearSelectedHighlight();
+                } else {
+                    showFeedback(`Wrong slot! ${selectedCardType} cards go in the ${selectedCardType} slot.`, "error");
+                    clearSelectedHighlight();
+                }
+                selectedCard = null;
+                selectedCardType = null;
+                selectedCardItem = null;
+                selectedCardIndex = null;
             }
-            touchDraggedItem = null;
-            touchStartElement = null;
-            isDraggingCard = false;
         });
+    }
+    
+    function clearSelectedHighlight() {
+        if (selectedCard) {
+            selectedCard.classList.remove("card-selected");
+        }
+    }
+    
+    // Setup drop zones for mobile tap-to-drop
+    function setupMobileDropZones() {
+        const causeZone = els.causeDrop;
+        const solutionZone = els.solutionDrop;
         
-        card.addEventListener("touchcancel", (e) => {
-            if (touchTimeout) {
-                clearTimeout(touchTimeout);
-                touchTimeout = null;
+        const handleZoneClick = (e) => {
+            e.stopPropagation();
+            
+            if (levelLocked) {
+                showFeedback("Level complete! Click continue to next challenge.", "info");
+                return;
             }
             
-            const ghost = document.getElementById("drag-ghost");
-            if (ghost) ghost.remove();
+            const zoneType = e.currentTarget.dataset.accept;
             
-            if (touchStartElement) {
-                touchStartElement.classList.remove("is-dragging");
+            if (selectedCard === null) {
+                showFeedback(`First tap a ${zoneType} card, then tap this slot.`, "info");
+            } else if (selectedCardType === zoneType) {
+                handleDrop(selectedCardType, selectedCardItem, selectedCardIndex);
+                clearSelectedHighlight();
+                selectedCard = null;
+                selectedCardType = null;
+                selectedCardItem = null;
+                selectedCardIndex = null;
+            } else {
+                showFeedback(`Wrong card! This is the ${zoneType} slot. Tap a ${zoneType} card first.`, "error");
+                clearSelectedHighlight();
+                selectedCard = null;
+                selectedCardType = null;
+                selectedCardItem = null;
+                selectedCardIndex = null;
             }
-            if (touchTargetZone) {
-                touchTargetZone.classList.remove("drop-zone--over");
-            }
-            touchDraggedItem = null;
-            touchStartElement = null;
-            touchTargetZone = null;
-            isDraggingCard = false;
-        });
+        };
+        
+        if (causeZone) causeZone.addEventListener("click", handleZoneClick);
+        if (solutionZone) solutionZone.addEventListener("click", handleZoneClick);
     }
 
     function setupDropZones() {
+        if (isMobile) {
+            setupMobileDropZones();
+            return;
+        }
+        
         const zones = document.querySelectorAll(".drop-zone");
         zones.forEach((zone) => {
-            // Desktop drag events
             zone.addEventListener("dragover", (e) => {
                 e.preventDefault();
                 if (draggedItem && zone.dataset.accept === draggedItem.type && !levelLocked) {
@@ -604,7 +516,12 @@
         setupDropZones();
         setupScrollIndicators();
         renderLevel(false);
-        showFeedback("Tap and hold a card, then drag to the matching slot!", "info");
+        
+        if (isMobile) {
+            showFeedback("📱 Tap a card, then tap the matching slot!", "info");
+        } else {
+            showFeedback("💻 Drag cards and drop them onto the matching slots!", "info");
+        }
 
         if (els.nextBtn) {
             els.nextBtn.addEventListener("click", () => {
