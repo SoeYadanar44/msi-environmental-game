@@ -981,11 +981,14 @@ body {
         transform: scale(1.02);
     }
 }
-/* Touch device optimizations - FASTER DRAG & DROP */
+/* Touch device optimizations - Balance between drag and scroll */
 @media (hover: none) and (pointer: coarse) {
     .picker-card {
         cursor: grab;
-        touch-action: none; /* Prevents page zoom while dragging */
+        /* Don't use touch-action: none - allows scrolling */
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
     }
     
     .picker-card:active {
@@ -995,19 +998,13 @@ body {
     .drop-zone--over {
         transform: scale(1.02);
         background: rgba(14, 165, 233, 0.2);
-        transition: all 0.05s ease; /* Faster transition for mobile */
-    }
-    
-    /* Disable long-press menu on cards */
-    .picker-card {
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
+        transition: all 0.05s ease;
     }
     
     /* Visual feedback for touch drag */
     .picker-card.is-dragging {
         opacity: 0.4;
         transform: scale(0.98);
+        transition: opacity 0.05s ease, transform 0.05s ease;
     }
 }

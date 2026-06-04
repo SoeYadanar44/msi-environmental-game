@@ -18,6 +18,8 @@
     let touchStartX = 0;
     let touchStartY = 0;
     let touchTargetZone = null;
+    let isDraggingCard = false;
+    let dragStartTime = 0;
     
     // Store the current level data
     let currentLevelData = null;
@@ -323,7 +325,7 @@
     }
 
     // ============================================
-    // IMPROVED DRAG AND TOUCH HANDLING FOR MOBILE
+    // IMPROVED TOUCH HANDLING - ALLOWS SCROLLING
     // ============================================
     
     function setupDraggable(card, type, item, index) {
@@ -351,82 +353,122 @@
         });
         
         // ============================================
-        // TOUCH EVENTS FOR FASTER MOBILE DRAG & DROP
+        // TOUCH EVENTS - DETECT DRAG VS SCROLL
         // ============================================
         
+        let touchTimeout = null;
+        
         card.addEventListener("touchstart", (e) => {
-            if (levelLocked) {
-                e.preventDefault();
-                return;
-            }
-            if (card.classList.contains("is-locked")) {
-                e.preventDefault();
-                return;
-            }
+            if (levelLocked) return;
+            if (card.classList.contains("is-locked")) return;
             
-            e.preventDefault();
             const touch = e.touches[0];
             touchStartX = touch.clientX;
             touchStartY = touch.clientY;
             touchStartElement = card;
             touchDraggedItem = { type, item, index };
+            dragStartTime = Date.now();
+            isDraggingCard = false;
             
-            // Visual feedback
-            card.classList.add("is-dragging");
-            
-            // Create a ghost clone for better visual feedback
-            const ghost = card.cloneNode(true);
-            ghost.style.position = "fixed";
-            ghost.style.top = "-9999px";
-            ghost.style.left = "-9999px";
-            ghost.style.width = card.offsetWidth + "px";
-            ghost.style.opacity = "0.5";
-            ghost.style.pointerEvents = "none";
-            ghost.id = "drag-ghost";
-            document.body.appendChild(ghost);
+            // Small delay to determine if user wants to drag or scroll
+            touchTimeout = setTimeout(() => {
+                // User held long enough - start drag mode
+                if (touchStartElement && !isDraggingCard) {
+                    isDraggingCard = true;
+                    touchStartElement.classList.add("is-dragging");
+                    
+                    // Create ghost for visual feedback
+                    const ghost = touchStartElement.cloneNode(true);
+                    ghost.style.position = "fixed";
+                    ghost.style.top = "-9999px";
+                    ghost.style.left = "-9999px";
+                    ghost.style.width = touchStartElement.offsetWidth + "px";
+                    ghost.style.opacity = "0.5";
+                    ghost.style.pointerEvents = "none";
+                    ghost.style.zIndex = "9999";
+                    ghost.id = "drag-ghost";
+                    document.body.appendChild(ghost);
+                }
+            }, 100);
         });
         
         card.addEventListener("touchmove", (e) => {
             if (!touchDraggedItem) return;
-            e.preventDefault();
             
             const touch = e.touches[0];
-            const ghost = document.getElementById("drag-ghost");
-            if (ghost) {
-                ghost.style.top = (touch.clientY - 50) + "px";
-                ghost.style.left = (touch.clientX - 50) + "px";
-            }
+            const deltaX = Math.abs(touch.clientX - touchStartX);
+            const deltaY = Math.abs(touch.clientY - touchStartY);
             
-            // Find which drop zone the finger is over
-            const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
-            let targetZone = null;
-            
-            for (let el of elemUnderTouch) {
-                if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
-                    targetZone = el;
-                    break;
+            // If user moves more than 10px, consider it a drag attempt
+            if (!isDraggingCard && (deltaX > 10 || deltaY > 10)) {
+                // Clear the timeout since we're now dragging
+                if (touchTimeout) {
+                    clearTimeout(touchTimeout);
+                    touchTimeout = null;
+                }
+                isDraggingCard = true;
+                if (touchStartElement) {
+                    touchStartElement.classList.add("is-dragging");
+                    
+                    // Create ghost
+                    const ghost = touchStartElement.cloneNode(true);
+                    ghost.style.position = "fixed";
+                    ghost.style.top = "-9999px";
+                    ghost.style.left = "-9999px";
+                    ghost.style.width = touchStartElement.offsetWidth + "px";
+                    ghost.style.opacity = "0.5";
+                    ghost.style.pointerEvents = "none";
+                    ghost.style.zIndex = "9999";
+                    ghost.id = "drag-ghost";
+                    document.body.appendChild(ghost);
                 }
             }
             
-            // Remove highlight from previous zone
-            if (touchTargetZone && touchTargetZone !== targetZone) {
-                touchTargetZone.classList.remove("drop-zone--over");
-            }
-            
-            // Add highlight to new zone
-            if (targetZone && targetZone.dataset.accept === touchDraggedItem.type) {
-                touchTargetZone = targetZone;
-                touchTargetZone.classList.add("drop-zone--over");
-            } else {
-                if (touchTargetZone) {
+            if (isDraggingCard) {
+                e.preventDefault();
+                
+                const ghost = document.getElementById("drag-ghost");
+                if (ghost) {
+                    ghost.style.top = (touch.clientY - 50) + "px";
+                    ghost.style.left = (touch.clientX - 50) + "px";
+                }
+                
+                // Find which drop zone the finger is over
+                const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
+                let targetZone = null;
+                
+                for (let el of elemUnderTouch) {
+                    if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
+                        targetZone = el;
+                        break;
+                    }
+                }
+                
+                // Remove highlight from previous zone
+                if (touchTargetZone && touchTargetZone !== targetZone) {
                     touchTargetZone.classList.remove("drop-zone--over");
-                    touchTargetZone = null;
+                }
+                
+                // Add highlight to new zone
+                if (targetZone && targetZone.dataset.accept === touchDraggedItem.type) {
+                    touchTargetZone = targetZone;
+                    touchTargetZone.classList.add("drop-zone--over");
+                } else {
+                    if (touchTargetZone) {
+                        touchTargetZone.classList.remove("drop-zone--over");
+                        touchTargetZone = null;
+                    }
                 }
             }
-        });
+            // If not dragging, let the browser handle scrolling normally
+        }, { passive: false });
         
         card.addEventListener("touchend", (e) => {
-            e.preventDefault();
+            // Clear the timeout if it's still pending
+            if (touchTimeout) {
+                clearTimeout(touchTimeout);
+                touchTimeout = null;
+            }
             
             const ghost = document.getElementById("drag-ghost");
             if (ghost) ghost.remove();
@@ -437,32 +479,37 @@
                 }
                 touchDraggedItem = null;
                 touchStartElement = null;
+                isDraggingCard = false;
                 return;
             }
             
-            // Get the final position
-            const touch = e.changedTouches[0];
-            const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
-            let dropZone = null;
-            
-            for (let el of elemUnderTouch) {
-                if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
-                    dropZone = el;
-                    break;
+            if (isDraggingCard) {
+                e.preventDefault();
+                
+                // Get the final position
+                const touch = e.changedTouches[0];
+                const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
+                let dropZone = null;
+                
+                for (let el of elemUnderTouch) {
+                    if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
+                        dropZone = el;
+                        break;
+                    }
                 }
-            }
-            
-            // Remove highlight
-            if (touchTargetZone) {
-                touchTargetZone.classList.remove("drop-zone--over");
-                touchTargetZone = null;
-            }
-            
-            // Check if drop is valid
-            if (dropZone && dropZone.dataset.accept === touchDraggedItem.type && !levelLocked) {
-                handleDrop(touchDraggedItem.type, touchDraggedItem.item, touchDraggedItem.index);
-            } else if (touchDraggedItem) {
-                showFeedback(`Drop ${touchDraggedItem.type} cards on the ${touchDraggedItem.type} slot.`, "error");
+                
+                // Remove highlight
+                if (touchTargetZone) {
+                    touchTargetZone.classList.remove("drop-zone--over");
+                    touchTargetZone = null;
+                }
+                
+                // Check if drop is valid
+                if (dropZone && dropZone.dataset.accept === touchDraggedItem.type && !levelLocked) {
+                    handleDrop(touchDraggedItem.type, touchDraggedItem.item, touchDraggedItem.index);
+                } else if (touchDraggedItem) {
+                    showFeedback(`Drop ${touchDraggedItem.type} cards on the ${touchDraggedItem.type} slot.`, "error");
+                }
             }
             
             // Clean up
@@ -471,10 +518,15 @@
             }
             touchDraggedItem = null;
             touchStartElement = null;
+            isDraggingCard = false;
         });
         
-        // Prevent page scroll while dragging on touch
         card.addEventListener("touchcancel", (e) => {
+            if (touchTimeout) {
+                clearTimeout(touchTimeout);
+                touchTimeout = null;
+            }
+            
             const ghost = document.getElementById("drag-ghost");
             if (ghost) ghost.remove();
             
@@ -487,6 +539,7 @@
             touchDraggedItem = null;
             touchStartElement = null;
             touchTargetZone = null;
+            isDraggingCard = false;
         });
     }
 
@@ -518,11 +571,6 @@
                 } else if (draggedItem) {
                     showFeedback(`Drop ${draggedItem.type} cards on the ${draggedItem.type} slot.`, "error");
                 }
-            });
-            
-            // Prevent touch events on drop zones from bubbling
-            zone.addEventListener("touchstart", (e) => {
-                e.preventDefault();
             });
         });
     }
@@ -556,7 +604,7 @@
         setupDropZones();
         setupScrollIndicators();
         renderLevel(false);
-        showFeedback("Tap and drag cards to the matching slots!", "info");
+        showFeedback("Tap and hold a card, then drag to the matching slot!", "info");
 
         if (els.nextBtn) {
             els.nextBtn.addEventListener("click", () => {
@@ -583,17 +631,6 @@
                 }
             });
         }
-        
-        // Prevent default touch behavior on scroll areas to avoid conflicts
-        const scrollAreas = [els.causeScroll, els.solutionScroll];
-        scrollAreas.forEach(area => {
-            if (area) {
-                area.addEventListener("touchstart", (e) => {
-                    // Allow scrolling normally
-                    e.stopPropagation();
-                }, { passive: false });
-            }
-        });
     }
 
     if (document.readyState === "loading") {
