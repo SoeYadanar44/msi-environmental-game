@@ -10,18 +10,16 @@
     let droppedCause = null;
     let droppedSolution = null;
     let levelLocked = false;
-    let draggedItem = null;
     
-    // For mobile tap-to-select mode
+    // For mobile tap mode
     let selectedCard = null;
     let selectedCardType = null;
     let selectedCardItem = null;
     let selectedCardIndex = null;
     
-    // Detect if device is mobile/touch
+    // Detect mobile device
     const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     
-    // Store the current level data
     let currentLevelData = null;
 
     const els = {
@@ -123,12 +121,63 @@
             <p class="picker-card__caption">${escapeHtml(item.text)}</p>
         `;
 
-        if (isMobile) {
-            setupMobileTap(card, type, item, index);
-        } else {
-            setupDraggable(card, type, item, index);
-        }
+        // SIMPLE: Just use click for both desktop and mobile
+        // No drag events at all - much faster!
+        card.addEventListener("click", (e) => {
+            e.stopPropagation();
+            handleCardClick(card, type, item, index);
+        });
+        
         return card;
+    }
+
+    function handleCardClick(card, type, item, index) {
+        if (levelLocked) {
+            showFeedback("Level complete! Click continue to next challenge.", "info");
+            return;
+        }
+        
+        if (card.classList.contains("is-locked")) {
+            showFeedback("This card has already been used!", "info");
+            return;
+        }
+        
+        // If no card is selected, select this one
+        if (selectedCard === null) {
+            // Clear any previous selection highlight
+            clearSelectedHighlight();
+            
+            selectedCard = card;
+            selectedCardType = type;
+            selectedCardItem = item;
+            selectedCardIndex = index;
+            
+            card.classList.add("card-selected");
+            showFeedback(`✓ Selected: ${item.text.substring(0, 40)}... Now tap the matching ${type} box below.`, "success");
+        } 
+        // If a card is selected, clear it (user tapped another card)
+        else if (selectedCard !== card) {
+            clearSelectedHighlight();
+            
+            // Select the new card
+            selectedCard = card;
+            selectedCardType = type;
+            selectedCardItem = item;
+            selectedCardIndex = index;
+            
+            card.classList.add("card-selected");
+            showFeedback(`✓ Selected: ${item.text.substring(0, 40)}... Now tap the matching ${type} box below.`, "success");
+        }
+    }
+    
+    function clearSelectedHighlight() {
+        if (selectedCard) {
+            selectedCard.classList.remove("card-selected");
+        }
+        selectedCard = null;
+        selectedCardType = null;
+        selectedCardItem = null;
+        selectedCardIndex = null;
     }
 
     function escapeHtml(str) {
@@ -215,9 +264,12 @@
             const scrollBox = type === "cause" ? els.causeScroll : els.solutionScroll;
             const matchedCard = scrollBox.querySelector(`.picker-card[data-index="${index}"]`);
             if (matchedCard) matchedCard.classList.add("is-locked");
-            showFeedback(`Great! The correct ${type} has been matched!`, "success");
+            showFeedback(`🎉 Great! The correct ${type} has been matched!`, "success");
+            
+            // Clear selected card after successful match
+            clearSelectedHighlight();
         } else {
-            showFeedback(`That is not the correct ${type}. Try a different option!`, "error");
+            showFeedback(`❌ That is not the correct ${type}. Try a different option!`, "error");
             
             setTimeout(() => {
                 if ((type === "cause" && !droppedCause?.isCorrect) || (type === "solution" && !droppedSolution?.isCorrect)) {
@@ -286,7 +338,7 @@
         const level = getLevel();
         
         levelLocked = false;
-        selectedCard = null;
+        clearSelectedHighlight();
         resetDropZones();
         updateProblemView(animate);
         renderCardScroll(els.causeScroll, level.causes, "cause");
@@ -329,92 +381,8 @@
         renderLevel(true);
     }
 
-    // ============================================
-    // DESKTOP: DRAG & DROP
-    // ============================================
-    
-    function setupDraggable(card, type, item, index) {
-        card.setAttribute("draggable", "true");
-        
-        card.addEventListener("dragstart", (e) => {
-            if (levelLocked) {
-                e.preventDefault();
-                return false;
-            }
-            if (card.classList.contains("is-locked")) {
-                e.preventDefault();
-                return false;
-            }
-            draggedItem = { type, item, index };
-            card.classList.add("is-dragging");
-            e.dataTransfer.setData("text/plain", "");
-            e.dataTransfer.effectAllowed = "move";
-        });
-        
-        card.addEventListener("dragend", () => {
-            card.classList.remove("is-dragging");
-            draggedItem = null;
-        });
-    }
-
-    // ============================================
-    // MOBILE: TAP-TO-SELECT + TAP-TO-DROP
-    // ============================================
-    
-    function setupMobileTap(card, type, item, index) {
-        card.addEventListener("click", (e) => {
-            e.stopPropagation();
-            
-            if (levelLocked) {
-                showFeedback("Level complete! Click continue to next challenge.", "info");
-                return;
-            }
-            
-            if (card.classList.contains("is-locked")) {
-                showFeedback("This card has already been used!", "info");
-                return;
-            }
-            
-            // If no card is selected, select this one
-            if (selectedCard === null) {
-                // Clear any previous selection highlight
-                clearSelectedHighlight();
-                
-                selectedCard = card;
-                selectedCardType = type;
-                selectedCardItem = item;
-                selectedCardIndex = index;
-                
-                card.classList.add("card-selected");
-                showFeedback(`Selected: ${item.text}. Now tap the matching ${type} slot.`, "info");
-            } 
-            // If a card is selected, this is a drop attempt
-            else {
-                // Check if the selected card matches this drop zone's type
-                if (selectedCardType === type) {
-                    // This is a drop on the correct type zone
-                    handleDrop(selectedCardType, selectedCardItem, selectedCardIndex);
-                    clearSelectedHighlight();
-                } else {
-                    showFeedback(`Wrong slot! ${selectedCardType} cards go in the ${selectedCardType} slot.`, "error");
-                    clearSelectedHighlight();
-                }
-                selectedCard = null;
-                selectedCardType = null;
-                selectedCardItem = null;
-                selectedCardIndex = null;
-            }
-        });
-    }
-    
-    function clearSelectedHighlight() {
-        if (selectedCard) {
-            selectedCard.classList.remove("card-selected");
-        }
-    }
-    
-    // Setup drop zones for mobile tap-to-drop
-    function setupMobileDropZones() {
+    // Setup drop zones for click/tap
+    function setupDropZones() {
         const causeZone = els.causeDrop;
         const solutionZone = els.solutionDrop;
         
@@ -429,62 +397,18 @@
             const zoneType = e.currentTarget.dataset.accept;
             
             if (selectedCard === null) {
-                showFeedback(`First tap a ${zoneType} card, then tap this slot.`, "info");
+                showFeedback(`👉 First tap a ${zoneType} card, then tap this slot.`, "info");
             } else if (selectedCardType === zoneType) {
                 handleDrop(selectedCardType, selectedCardItem, selectedCardIndex);
                 clearSelectedHighlight();
-                selectedCard = null;
-                selectedCardType = null;
-                selectedCardItem = null;
-                selectedCardIndex = null;
             } else {
-                showFeedback(`Wrong card! This is the ${zoneType} slot. Tap a ${zoneType} card first.`, "error");
+                showFeedback(`❌ Wrong card! This is the ${zoneType} slot. Tap a ${zoneType} card first.`, "error");
                 clearSelectedHighlight();
-                selectedCard = null;
-                selectedCardType = null;
-                selectedCardItem = null;
-                selectedCardIndex = null;
             }
         };
         
         if (causeZone) causeZone.addEventListener("click", handleZoneClick);
         if (solutionZone) solutionZone.addEventListener("click", handleZoneClick);
-    }
-
-    function setupDropZones() {
-        if (isMobile) {
-            setupMobileDropZones();
-            return;
-        }
-        
-        const zones = document.querySelectorAll(".drop-zone");
-        zones.forEach((zone) => {
-            zone.addEventListener("dragover", (e) => {
-                e.preventDefault();
-                if (draggedItem && zone.dataset.accept === draggedItem.type && !levelLocked) {
-                    zone.classList.add("drop-zone--over");
-                    e.dataTransfer.dropEffect = "move";
-                }
-            });
-            
-            zone.addEventListener("dragleave", () => {
-                zone.classList.remove("drop-zone--over");
-            });
-            
-            zone.addEventListener("drop", (e) => {
-                e.preventDefault();
-                zone.classList.remove("drop-zone--over");
-                if (levelLocked) {
-                    showFeedback("You've already completed this level! Click continue.", "info");
-                    return;
-                }
-                if (draggedItem && zone.dataset.accept === draggedItem.type) {
-                    handleDrop(draggedItem.type, draggedItem.item, draggedItem.index);
-                } else if (draggedItem) {
-                    showFeedback(`Drop ${draggedItem.type} cards on the ${draggedItem.type} slot.`, "error");
-                }
-            });
-        });
     }
 
     function launchConfetti() {
@@ -517,11 +441,7 @@
         setupScrollIndicators();
         renderLevel(false);
         
-        if (isMobile) {
-            showFeedback("📱 Tap a card, then tap the matching slot!", "info");
-        } else {
-            showFeedback("💻 Drag cards and drop them onto the matching slots!", "info");
-        }
+        showFeedback("✨ Tap a card, then tap the matching slot below! ✨", "info");
 
         if (els.nextBtn) {
             els.nextBtn.addEventListener("click", () => {

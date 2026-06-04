@@ -966,59 +966,17 @@ body {
         margin-bottom: 1rem;
     }
 }
-
-/* Touch device optimizations */
-@media (hover: none) and (pointer: coarse) {
-    .picker-card {
-        cursor: grab;
-    }
-    
-    .picker-card:active {
-        cursor: grabbing;
-    }
-    
-    .drop-zone--over {
-        transform: scale(1.02);
-    }
-}
-/* Touch device optimizations - Balance between drag and scroll */
-@media (hover: none) and (pointer: coarse) {
-    .picker-card {
-        cursor: grab;
-        /* Don't use touch-action: none - allows scrolling */
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-    }
-    
-    .picker-card:active {
-        cursor: grabbing;
-    }
-    
-    .drop-zone--over {
-        transform: scale(1.02);
-        background: rgba(14, 165, 233, 0.2);
-        transition: all 0.05s ease;
-    }
-    
-    /* Visual feedback for touch drag */
-    .picker-card.is-dragging {
-        opacity: 0.4;
-        transform: scale(0.98);
-        transition: opacity 0.05s ease, transform 0.05s ease;
-    }
-}
-/* Selected card highlight for mobile tap mode */
+/* Selected card highlight */
 .picker-card.card-selected {
-    outline: 3px solid var(--msi-blue-light);
+    outline: 3px solid #0ea5e9;
     outline-offset: 4px;
     transform: scale(1.02);
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.3);
     border-radius: var(--radius);
 }
 
-/* Mobile instructions */
+/* Mobile tap mode styles */
 @media (hover: none) and (pointer: coarse) {
     .game-tagline {
         font-size: 0.75rem;
