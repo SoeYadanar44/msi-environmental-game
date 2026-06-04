@@ -12,6 +12,13 @@
     let levelLocked = false;
     let draggedItem = null;
     
+    // Touch drag variables
+    let touchDraggedItem = null;
+    let touchStartElement = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchTargetZone = null;
+    
     // Store the current level data
     let currentLevelData = null;
 
@@ -158,7 +165,6 @@
         }
     }
 
-    // Function to reset a specific drop zone to empty state
     function resetDropZone(zoneEl, type) {
         if (!zoneEl) return;
         const label = type === "cause" ? "Cause" : "Solution";
@@ -175,7 +181,6 @@
         const zoneEl = type === "cause" ? els.causeDrop : els.solutionDrop;
         if (!zoneEl) return;
 
-        // If a correct match is already locked for this type, prevent dropping
         if ((type === "cause" && droppedCause?.isCorrect) || (type === "solution" && droppedSolution?.isCorrect)) {
             showFeedback(`You already matched the correct ${type}!`, "info");
             return;
@@ -194,7 +199,6 @@
         zoneEl.classList.add(isCorrect ? "drop-zone--correct" : "drop-zone--wrong");
 
         if (isCorrect) {
-            // Correct match - keep it in the box and lock it
             if (type === "cause") {
                 droppedCause = { item, isCorrect };
             } else {
@@ -207,12 +211,9 @@
             if (matchedCard) matchedCard.classList.add("is-locked");
             showFeedback(`Great! The correct ${type} has been matched!`, "success");
         } else {
-            // Wrong match - show error, then clear the box after a delay
             showFeedback(`That is not the correct ${type}. Try a different option!`, "error");
             
-            // Schedule removal of the wrong card from the drop zone
             setTimeout(() => {
-                // Only reset if this specific type hasn't been correctly matched yet
                 if ((type === "cause" && !droppedCause?.isCorrect) || (type === "solution" && !droppedSolution?.isCorrect)) {
                     resetDropZone(zoneEl, type);
                 }
@@ -275,7 +276,6 @@
     }
 
     function renderLevel(animate) {
-        // Force refresh to get new decoys
         currentLevelData = null;
         const level = getLevel();
         
@@ -322,7 +322,12 @@
         renderLevel(true);
     }
 
+    // ============================================
+    // IMPROVED DRAG AND TOUCH HANDLING FOR MOBILE
+    // ============================================
+    
     function setupDraggable(card, type, item, index) {
+        // Desktop drag events
         card.setAttribute("draggable", "true");
         
         card.addEventListener("dragstart", (e) => {
@@ -330,7 +335,6 @@
                 e.preventDefault();
                 return false;
             }
-            // Prevent dragging cards that are already locked (correct cards)
             if (card.classList.contains("is-locked")) {
                 e.preventDefault();
                 return false;
@@ -345,11 +349,151 @@
             card.classList.remove("is-dragging");
             draggedItem = null;
         });
+        
+        // ============================================
+        // TOUCH EVENTS FOR FASTER MOBILE DRAG & DROP
+        // ============================================
+        
+        card.addEventListener("touchstart", (e) => {
+            if (levelLocked) {
+                e.preventDefault();
+                return;
+            }
+            if (card.classList.contains("is-locked")) {
+                e.preventDefault();
+                return;
+            }
+            
+            e.preventDefault();
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            touchStartElement = card;
+            touchDraggedItem = { type, item, index };
+            
+            // Visual feedback
+            card.classList.add("is-dragging");
+            
+            // Create a ghost clone for better visual feedback
+            const ghost = card.cloneNode(true);
+            ghost.style.position = "fixed";
+            ghost.style.top = "-9999px";
+            ghost.style.left = "-9999px";
+            ghost.style.width = card.offsetWidth + "px";
+            ghost.style.opacity = "0.5";
+            ghost.style.pointerEvents = "none";
+            ghost.id = "drag-ghost";
+            document.body.appendChild(ghost);
+        });
+        
+        card.addEventListener("touchmove", (e) => {
+            if (!touchDraggedItem) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const ghost = document.getElementById("drag-ghost");
+            if (ghost) {
+                ghost.style.top = (touch.clientY - 50) + "px";
+                ghost.style.left = (touch.clientX - 50) + "px";
+            }
+            
+            // Find which drop zone the finger is over
+            const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
+            let targetZone = null;
+            
+            for (let el of elemUnderTouch) {
+                if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
+                    targetZone = el;
+                    break;
+                }
+            }
+            
+            // Remove highlight from previous zone
+            if (touchTargetZone && touchTargetZone !== targetZone) {
+                touchTargetZone.classList.remove("drop-zone--over");
+            }
+            
+            // Add highlight to new zone
+            if (targetZone && targetZone.dataset.accept === touchDraggedItem.type) {
+                touchTargetZone = targetZone;
+                touchTargetZone.classList.add("drop-zone--over");
+            } else {
+                if (touchTargetZone) {
+                    touchTargetZone.classList.remove("drop-zone--over");
+                    touchTargetZone = null;
+                }
+            }
+        });
+        
+        card.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            
+            const ghost = document.getElementById("drag-ghost");
+            if (ghost) ghost.remove();
+            
+            if (!touchDraggedItem) {
+                if (touchStartElement) {
+                    touchStartElement.classList.remove("is-dragging");
+                }
+                touchDraggedItem = null;
+                touchStartElement = null;
+                return;
+            }
+            
+            // Get the final position
+            const touch = e.changedTouches[0];
+            const elemUnderTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
+            let dropZone = null;
+            
+            for (let el of elemUnderTouch) {
+                if (el.classList && (el.id === "cause-drop" || el.id === "solution-drop")) {
+                    dropZone = el;
+                    break;
+                }
+            }
+            
+            // Remove highlight
+            if (touchTargetZone) {
+                touchTargetZone.classList.remove("drop-zone--over");
+                touchTargetZone = null;
+            }
+            
+            // Check if drop is valid
+            if (dropZone && dropZone.dataset.accept === touchDraggedItem.type && !levelLocked) {
+                handleDrop(touchDraggedItem.type, touchDraggedItem.item, touchDraggedItem.index);
+            } else if (touchDraggedItem) {
+                showFeedback(`Drop ${touchDraggedItem.type} cards on the ${touchDraggedItem.type} slot.`, "error");
+            }
+            
+            // Clean up
+            if (touchStartElement) {
+                touchStartElement.classList.remove("is-dragging");
+            }
+            touchDraggedItem = null;
+            touchStartElement = null;
+        });
+        
+        // Prevent page scroll while dragging on touch
+        card.addEventListener("touchcancel", (e) => {
+            const ghost = document.getElementById("drag-ghost");
+            if (ghost) ghost.remove();
+            
+            if (touchStartElement) {
+                touchStartElement.classList.remove("is-dragging");
+            }
+            if (touchTargetZone) {
+                touchTargetZone.classList.remove("drop-zone--over");
+            }
+            touchDraggedItem = null;
+            touchStartElement = null;
+            touchTargetZone = null;
+        });
     }
 
     function setupDropZones() {
         const zones = document.querySelectorAll(".drop-zone");
         zones.forEach((zone) => {
+            // Desktop drag events
             zone.addEventListener("dragover", (e) => {
                 e.preventDefault();
                 if (draggedItem && zone.dataset.accept === draggedItem.type && !levelLocked) {
@@ -374,6 +518,11 @@
                 } else if (draggedItem) {
                     showFeedback(`Drop ${draggedItem.type} cards on the ${draggedItem.type} slot.`, "error");
                 }
+            });
+            
+            // Prevent touch events on drop zones from bubbling
+            zone.addEventListener("touchstart", (e) => {
+                e.preventDefault();
             });
         });
     }
@@ -407,7 +556,7 @@
         setupDropZones();
         setupScrollIndicators();
         renderLevel(false);
-        showFeedback("Scroll through the cards, then drag them onto the matching slots!", "info");
+        showFeedback("Tap and drag cards to the matching slots!", "info");
 
         if (els.nextBtn) {
             els.nextBtn.addEventListener("click", () => {
@@ -434,6 +583,17 @@
                 }
             });
         }
+        
+        // Prevent default touch behavior on scroll areas to avoid conflicts
+        const scrollAreas = [els.causeScroll, els.solutionScroll];
+        scrollAreas.forEach(area => {
+            if (area) {
+                area.addEventListener("touchstart", (e) => {
+                    // Allow scrolling normally
+                    e.stopPropagation();
+                }, { passive: false });
+            }
+        });
     }
 
     if (document.readyState === "loading") {
